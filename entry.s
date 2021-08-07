@@ -4,13 +4,6 @@
 .EQU	kioResult,	16
 .EQU	kcsCode,	26
 .EQU	JIODone,	0x08FC
-.GLOBAL RDiskSig
-.GLOBAL RDiskDBGNamePos
-.GLOBAL RDiskDBGDisPos
-.GLOBAL RDiskDBGDisByte
-.GLOBAL RDiskCDRNamePos
-.GLOBAL RDiskCDRDisPos
-.GLOBAL RDiskCDRDisByte
 
 dc.l	0x00000000, 0x00000000, 0x00000000, 0x00000000
 dc.l	0x00000000, 0x00000000, 0x00000000, 0x00000000
@@ -21,11 +14,11 @@ RDiskSig:
 RDiskDBGDisPos:
 dc.l 0x00000031
 RDiskCDRDisPos:
-dc.l 0x00012CAF
+dc.l 0xFFFFFFFF
 RDiskDBGNameAddr:
 dc.l 0x4088002A
 RDiskCDRNameAddr:
-dc.l 0x40892C96
+dc.l 0x00000000
 RDiskDBGDisByte:
 dc.b 0x44
 RDiskCDRDisByte:
@@ -34,6 +27,9 @@ RDiskRAMRequired:
 .ascii	"16"
 
 .align 4
+RDiskSize:
+dc.l 0x00780000
+
 DOpen:
 	movem.l		%A0-%A1, -(%SP)
 	bsr			RDOpen
