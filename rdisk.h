@@ -21,12 +21,13 @@ OSErr RDiskReadXPRAM(short numBytes, short whichByte, Ptr dest) = {0x4840, 0x300
 OSErr RDiskAddDrive(short drvrRefNum, short drvNum, DrvQElPtr dq) = {0x4840, 0x3001, 0xA04E};
 
 static inline char RDiskIsRPressed() { return *((volatile char*)0x175) & 0x80; }
-static inline char RDiskIsAPressed() { return *((volatile char*)0x174) & 0x01; }
 
 #define RDISK_ICON_SIZE (285)
 typedef struct RDiskStorage_s {
 	DrvSts2 status;
 	char initialized;
+	char dbgDisByte;
+	char cdrDisByte;
 	#ifdef RDISK_COMPRESS_ICON_ENABLE
 	char icon[RDISK_ICON_SIZE+8];
 	#endif
@@ -37,9 +38,6 @@ typedef void (*RDiskCopy_t)(Ptr, Ptr, unsigned long);
 
 typedef char (*RDiskPeek_t)(Ptr);
 #define peek24(a, d) { RDiskPeek_t f = G24; d = f(a); }
-
-typedef void (*RDiskPoke_t)(Ptr, char);
-#define poke24(a, d) { RDiskPoke_t f = S24; f(a, d); }
 
 #define PackBits_Repeat(count) (-1 * (count - 1))
 #define PackBits_Literal(count) (count - 1)

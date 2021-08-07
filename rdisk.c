@@ -9,46 +9,40 @@
 #include "rdisk.h"
 
 // Decode keyboard/PRAM settings
-static void RDDecodeSettings(Ptr unmountEN, Ptr mountEN, Ptr ramEN, Ptr dbgEN, Ptr cdrEN) {
-	// Sample R and A keys repeatedly
-	char r = 0, a = 0;
+static void RDDecodeSettings(Ptr unmountEN, Ptr mountEN, Ptr dbgEN, Ptr cdrEN) {
+	// Sample R key repeatedly
+	char r = 0;
 	long tmax = TickCount() + 60;
 	for (long i = 0; i < 1000000; i++) {
-		a |= RDiskIsAPressed();
-		r |= RDiskIsRPressed() | a;
+		r |= RDiskIsRPressed();
 		if (r) { break; }
 		if (TickCount() > tmax) { break; }
 	}
 
 	// Read PRAM
-	char legacy_startup, legacy_ram;
+	char legacy_startup;
 	RDiskReadXPRAM(1, 4, &legacy_startup);
-	RDiskReadXPRAM(1, 5, &legacy_ram);
 
 	// Decode settings: unmount (don't boot), mount (after boot), RAM disk
 	if (r) { // R boots from ROM disk
 		*unmountEN = 0; // Don't unmount so we boot from this drive
 		*mountEN = 0; // No need to mount later since we are boot disk
-		*ramEN = a; // A enables RAM disk
 		*dbgEN = 0;
 		*cdrEN = 0;
 	} else {
 		if (legacy_startup & 0x01) { // Boot from ROM disk
 			*unmountEN = 0; // Don't unmount so we boot from this drive
 			*mountEN = 0; // No need to mount later since we are boot disk
-			*ramEN = legacy_ram & 0x01; // Allocate RAM disk if bit 0 == 1
 			*dbgEN = legacy_startup & 0x04; // MacsBug enabled if bit 2 == 1
 			*cdrEN = legacy_startup & 0x08; // CD-ROM enabled if bit 3 == 1
 		} else if (!(legacy_startup & 0x02)) { // Mount ROM disk
 			*unmountEN = 1; // Unmount to not boot from our disk
 			*mountEN = 1; // Mount in accRun
-			*ramEN = legacy_ram & 0x01; // Allocate RAM disk if bit 0 == 1
 			*dbgEN = 1; // CD-ROM ext. always enabled in mount mode
 			*cdrEN = 1; // MacsBug always enabled in mount mode
 		} else {
 			*unmountEN = 1; // Unmount
 			*mountEN = 0; // Don't mount again
-			*ramEN = 0; // Don't allocate RAM disk
 			*dbgEN = 1; // CD-ROM ext. always enabled in unmount mode
 			*cdrEN = 1; // MacsBug always enabled in unmount mode
 		}
@@ -73,15 +67,6 @@ char __attribute__ ((noinline)) G24(Ptr pos) {
 	ret = *pos; // Peek
 	SwapMMUMode(&mode);
 	return ret;
-}
-
-// Switch to 32-bit mode and set
-#pragma parameter S24(__A2, __D3)
-void __attribute__ ((noinline)) S24(Ptr pos, char patch) {
-	signed char mode = true32b;
-	SwapMMUMode(&mode);
-	*pos = patch; // Poke
-	SwapMMUMode(&mode);
 }
 
 // Figure out the first available drive number >= 5
@@ -149,57 +134,18 @@ OSErr RDOpen(IOParamPtr p, DCtlPtr d) {
 
 // Init is called at beginning of first prime (read/write) call
 static void RDInit(IOParamPtr p, DCtlPtr d, RDiskStorage_t *c) {
-	char unmountEN, mountEN, ramEN, dbgEN, cdrEN;
+	char unmountEN, mountEN, dbgEN, cdrEN;
 	// Mark init done
 	c->initialized = 1;
 	// Decode settings
-	RDDecodeSettings(&unmountEN, &mountEN, &ramEN, &dbgEN, &cdrEN);
-	
-	// If RAM disk enabled, try to allocate RAM disk buffer if not already
-	if (ramEN & !c->ramdisk) {
-		if (*MMU32bit) { // 32-bit mode
-			unsigned long minBufPtr, newBufPtr;
-			// Compute if there is enough high memory
-			minBufPtr = ((unsigned long)*MemTop / 2) + 1024;
-			newBufPtr = (unsigned long)*BufPtr - RDiskSize;	
-			if (newBufPtr > minBufPtr && (unsigned long)*BufPtr > newBufPtr) {
-				// Allocate RAM disk buffer by lowering BufPtr
-				*BufPtr = (Ptr)newBufPtr;
-				// Set RAM disk buffer pointer.
-				c->ramdisk = *BufPtr;
-				// Copy ROM disk image to RAM disk
-				BlockMove(RDiskBuf, c->ramdisk, RDiskSize);
-				// Clearing write protect marks RAM disk enabled
-				c->status.writeProt = 0;
-			}
-		} else { // 24-bit mode
-			// Put RAM disk just past 8MB
-			c->ramdisk = (Ptr)(8 * 1024 * 1024);
-			// Copy ROM disk image to RAM disk
-			//FIXME: what if we don't have enough RAM? 
-			// Will this wrap around and overwrite low memory?
-			// That's not the worst, since the system would just crash,
-			// but it would be better to switch to read-only status
-			copy24(RDiskBuf, c->ramdisk, RDiskSize);
-			// Clearing write protect marks RAM disk enabled
-			c->status.writeProt = 0;
-		}
-	}
+	RDDecodeSettings(&unmountEN, &mountEN, &dbgEN, &cdrEN);
 
 	// Patch
-	if (RDiskDBGDisPos < RDiskSize) {
-		if (c->ramdisk && !dbgEN) {
-			poke24(c->ramdisk + RDiskDBGDisPos, c->dbgDisByte);
-		} else if (dbgEN) {
-			peek24(RDiskBuf + RDiskDBGDisPos, c->dbgDisByte);
-		}
+	if (dbgEN && RDiskDBGDisPos < RDiskSize) {
+		peek24(RDiskBuf + RDiskDBGDisPos, c->dbgDisByte);
 	}
-	if (RDiskCDRDisPos < RDiskSize) {
-		if (c->ramdisk && !cdrEN) {
-			poke24(c->ramdisk + RDiskCDRDisPos, c->cdrDisByte);
-		} else if (cdrEN) {
-			peek24(RDiskBuf + RDiskCDRDisPos, c->cdrDisByte);
-		}
+	if (cdrEN && RDiskCDRDisPos < RDiskSize) {
+		peek24(RDiskBuf + RDiskCDRDisPos, c->cdrDisByte);
 	}
 
 	// Unmount if not booting from ROM disk
@@ -230,7 +176,7 @@ OSErr RDPrime(IOParamPtr p, DCtlPtr d) {
 	if (!c->status.diskInPlace) { return offLinErr; }
 
 	// Get pointer to RAM or ROM disk buffer
-	disk = (c->ramdisk ? c->ramdisk : RDiskBuf) + d->dCtlPosition;
+	disk = RDiskBuf + d->dCtlPosition;
 	//  Bounds checking
 	if (d->dCtlPosition >= RDiskSize || p->ioReqCount >= RDiskSize || 
 		d->dCtlPosition + p->ioReqCount >= RDiskSize) { return paramErr; }
@@ -241,20 +187,15 @@ OSErr RDPrime(IOParamPtr p, DCtlPtr d) {
 		// Read from disk into buffer.
 		if (*MMU32bit) { BlockMove(disk, p->ioBuffer, p->ioReqCount); }
 		else { copy24(disk, StripAddress(p->ioBuffer), p->ioReqCount); }
-		if (!c->ramdisk && RDiskDBGDisPos >= d->dCtlPosition && 
+		if (RDiskDBGDisPos >= d->dCtlPosition && 
 			RDiskDBGDisPos < d->dCtlPosition + p->ioReqCount) {
 			p->ioBuffer[RDiskDBGDisPos - d->dCtlPosition] = c->dbgDisByte;
 		}
-		if (!c->ramdisk && RDiskCDRDisPos >= d->dCtlPosition && 
+		if (RDiskCDRDisPos >= d->dCtlPosition && 
 			RDiskCDRDisPos < d->dCtlPosition + p->ioReqCount) {
 			p->ioBuffer[RDiskCDRDisPos - d->dCtlPosition] = c->cdrDisByte;
 		}
-	} else if (cmd == aWrCmd) { // Write
-		// Fail if write protected or RAM disk buffer not set up
-		if (c->status.writeProt || !c->ramdisk) { return wPrErr; }
-		// Write from buffer into disk.
-		if (*MMU32bit) { BlockMove(p->ioBuffer, disk, p->ioReqCount); }
-		else { copy24(StripAddress(p->ioBuffer), disk, p->ioReqCount); }
+	} else if (cmd == aWrCmd) { return wPrErr;
 	} else { return noErr; } //FIXME: Fail if cmd isn't read or write?
 
 	// Update count and position/offset, then return
@@ -272,19 +213,8 @@ OSErr RDCtl(CntrlParamPtr p, DCtlPtr d) {
 	c = *(RDiskStorage_t**)d->dCtlStorage;
 	// Handle control request based on csCode
 	switch (p->csCode) {
-		case killCode:
-			return noErr;
-		case kFormat:
-			if (!c->status.diskInPlace || c->status.writeProt ||
-				!c->ramdisk) { return controlErr; } 
-			long long z = 0;
-			Ptr pz;
-			if (*MMU32bit) { pz = (Ptr)&z; }
-			else { pz = StripAddress((Ptr)&z); }
-			for (int i = 0; i < 4095; i++) {
-				copy24(c->ramdisk + i * sizeof(z), pz, sizeof(z));
-			}
-			return noErr;
+		case killCode: return noErr;
+		case kFormat: return controlErr;
 		case kVerify:
 			if (!c->status.diskInPlace) { return controlErr; }
 			return noErr;
@@ -310,8 +240,7 @@ OSErr RDCtl(CntrlParamPtr p, DCtlPtr d) {
 			//  high word (bytes 2 & 3) clear
 			//  byte 1 = primary + fixed media + internal
 			//  byte 0 = drive type (0x10 is RAM disk) / (0x11 is ROM disk)
-			if (c->status.writeProt) { *(long*)p->csParam = 0x00000411; }
-			else { *(long*)p->csParam = 0x00000410; }
+			*(long*)p->csParam = 0x00000411;
 			return noErr;
 		case 24: // Return SCSI partition size
 			*(long*)p->csParam = RDiskSize / 512;
