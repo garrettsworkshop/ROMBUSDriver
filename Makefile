@@ -5,7 +5,7 @@ LD=$(PREFIX)-ld
 OBJCOPY=$(PREFIX)-objcopy
 OBJDUMP=$(PREFIX)-objdump
 
-all: bin/ROMBUS.bin obj/rdisk.s obj/driver.s obj/driver_abs.sym
+all: bin/ROMBUS.bin obj/rombus.s obj/driver.s obj/driver_abs.sym
 
 obj:
 	mkdir $@
@@ -20,14 +20,14 @@ obj/entry_rel.sym: obj obj/entry.o
 	$(OBJDUMP) -t obj/entry.o > $@
 
 
-obj/rdisk.o: rdisk.c obj
+obj/rombus.o: rombus.c obj
 	$(CC) -Wall -march=68030 -c -Os $< -o $@
 
-obj/rdisk.s: obj obj/rdisk.o
-	$(OBJDUMP) -d obj/rdisk.o > $@
+obj/rombus.s: obj obj/rombus.o
+	$(OBJDUMP) -d obj/rombus.o > $@
 
-obj/driver.o: obj obj/entry.o obj/rdisk.o
-	$(LD) -Ttext=40851D70 -o $@ obj/entry.o obj/rdisk.o
+obj/driver.o: obj obj/entry.o obj/rombus.o
+	$(LD) -Ttext=40851D70 -o $@ obj/entry.o obj/rombus.o
 
 obj/driver.s: obj obj/driver.o
 	$(OBJDUMP) -d obj/driver.o > $@
