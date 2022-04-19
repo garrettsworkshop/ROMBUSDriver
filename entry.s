@@ -13,6 +13,8 @@ SDiskSig:
 .align 4
 RDiskSize:
 dc.l 0x00780000
+SDiskSize:
+dc.l 0x80000000
 
 DOpen:
 	movem.l		%A0-%A1, -(%SP)
