@@ -1,2 +1,3 @@
 *.DS_Store
 obj/
+.vscode/c_cpp_properties.json
