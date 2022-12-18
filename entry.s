@@ -8,13 +8,27 @@
 dc.l	0x00000000, 0x00000000, 0x00000000, 0x00000000
 dc.l	0x00000000, 0x00000000, 0x00000000, 0x00000000
 
-SDiskSig:
-.ascii	"\5SDisk\0"
+RDiskSig:
+.ascii	"\5RDisk\0"
+.align 4
+RDiskDBGDisPos:
+dc.l 0x00000031
+RDiskCDRDisPos:
+dc.l 0xFFFFFFFF
+RDiskDBGNameAddr:
+dc.l 0x4088002A
+RDiskCDRNameAddr:
+dc.l 0x00000000
+RDiskDBGDisByte:
+dc.b 0x44
+RDiskCDRDisByte:
+dc.b 0x44
+RDiskRAMRequired:
+.ascii	"16"
+
 .align 4
 RDiskSize:
 dc.l 0x00780000
-SDiskSize:
-dc.l 0x80000000
 
 DOpen:
 	movem.l		%A0-%A1, -(%SP)
